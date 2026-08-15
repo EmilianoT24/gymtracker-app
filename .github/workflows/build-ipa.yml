@@ -1,0 +1,49 @@
+name: Generar IPA sin firmar
+
+on:
+  workflow_dispatch: # Permite iniciar la compilación con un botón en GitHub
+
+jobs:
+  build:
+    name: Compilar iOS
+    runs-on: macos-latest # Usamos una Mac virtual en GitHub
+
+    steps:
+      - name: Descargar el código fuente
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+
+      - name: Instalar dependencias del proyecto
+        run: npm install
+
+      - name: Generar carpetas nativas de Expo (Prebuild)
+        run: npx expo prebuild --platform ios --clean
+
+      - name: Compilar aplicación sin firmas digitales
+        run: |
+          cd ios
+          xcodebuild -workspace *.xcworkspace \
+            -scheme GymTracker \
+            -configuration Release \
+            -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CONFIGURATION_BUILD_DIR=${PWD}/build
+
+      - name: Empaquetar en formato .ipa
+        run: |
+          cd ios
+          mkdir -p Payload
+          mv build/*.app Payload/
+          zip -r GymTracker.ipa Payload
+
+      - name: Subir el archivo IPA para descargar
+        uses: actions/upload-artifact@v4
+        with:
+          name: GymTracker-App
+          path: ios/GymTracker.ipa

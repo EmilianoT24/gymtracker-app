@@ -1,15 +1,16 @@
 {
   "expo": {
-    "name": "my-gym-tracker",
-    "slug": "my-gym-tracker",
+    "name": "GymTracker",
+    "slug": "gymtracker",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "mygymtracker",
+    "scheme": "gymtracker",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.emiliano.gymtracker"
     },
     "android": {
       "adaptiveIcon": {
@@ -37,6 +38,13 @@
           "dark": {
             "backgroundColor": "#000000"
           }
+        }
+      ],
+      [
+        "react-native-health",
+        {
+          "HEALTH_SHARE_USAGE": "Leemos tus datos de pasos, peso y grasa corporal para llevar un registro automático de tu progreso en el gimnasio.",
+          "HEALTH_UPDATE_USAGE": "Guardamos tus entrenamientos en el ecosistema de salud para mantener tus métricas actualizadas."
         }
       ]
     ],
