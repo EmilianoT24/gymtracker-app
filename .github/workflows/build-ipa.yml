@@ -1,7 +1,10 @@
 name: Generar IPA sin firmar
 
 on:
-  workflow_dispatch: # Permite iniciar la compilación con un botón en GitHub
+  push:
+    branches:
+      - master
+  workflow_dispatch: # Mantenemos esta opción para también poder hacerlo manual
 
 jobs:
   build:
