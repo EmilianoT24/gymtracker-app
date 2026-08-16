@@ -4,12 +4,12 @@ on:
   push:
     branches:
       - master
-  workflow_dispatch: # Mantenemos esta opción para también poder hacerlo manual
+  workflow_dispatch: 
 
 jobs:
   build:
     name: Compilar iOS
-    runs-on: macos-latest # Usamos una Mac virtual en GitHub
+    runs-on: macos-latest
 
     steps:
       - name: Descargar el código fuente
@@ -29,20 +29,34 @@ jobs:
       - name: Compilar aplicación sin firmas digitales
         run: |
           cd ios
-          xcodebuild -workspace *.xcworkspace \
-            -scheme GymTracker \
+          
+          # 1. Enlazamos Node.js para que Xcode pueda encontrarlo al empaquetar React Native
+          export NODE_BINARY=$(which node)
+          sudo ln -sf $(which node) /usr/local/bin/node
+          
+          # 2. Buscamos dinámicamente tu Workspace y Scheme
+          WORKSPACE=$(ls -d *.xcworkspace | head -n 1)
+          SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+          echo "Construyendo Workspace: $WORKSPACE con Scheme: $SCHEME"
+          
+          # 3. Compilamos ignorando advertencias estrictas
+          xcodebuild build \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
             -configuration Release \
             -sdk iphoneos \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
+            -derivedDataPath derivedData \
             CODE_SIGN_IDENTITY="" \
-            CONFIGURATION_BUILD_DIR=${PWD}/build
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            GCC_TREAT_WARNINGS_AS_ERRORS=NO
 
       - name: Empaquetar en formato .ipa
         run: |
           cd ios
           mkdir -p Payload
-          mv build/*.app Payload/
+          # Movemos la app desde la carpeta derivedData a Payload
+          mv derivedData/Build/Products/Release-iphoneos/*.app Payload/
           zip -r GymTracker.ipa Payload
 
       - name: Subir el archivo IPA para descargar
