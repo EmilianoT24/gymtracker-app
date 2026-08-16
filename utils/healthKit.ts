@@ -14,14 +14,21 @@ const permissions: HealthKitPermissions = {
 
 // 2. Función para inicializar y pedir permisos al usuario
 export const initializeHealthKit = (): Promise<boolean> => {
-  return new Promise((resolve, reject) => {
-    AppleHealthKit.initHealthKit(permissions, (error: string) => {
-      if (error) {
-        console.log('[ERROR] No se pudieron obtener los permisos de Apple Health:', error);
-        reject(false);
-      }
-      resolve(true);
-    });
+  return new Promise((resolve) => {
+    try {
+      AppleHealthKit.initHealthKit(permissions, (error: string) => {
+        if (error) {
+          // Si el código no está firmado por una cuenta de pago, entrará aquí de forma segura
+          console.log('[HealthKit] Acceso denegado o sin firma válida de Entitlements:', error);
+          resolve(false); 
+          return;
+        }
+        resolve(true); // Éxito (Si en el futuro usas una cuenta de Apple Developer)
+      });
+    } catch (e) {
+      console.log('[HealthKit] Error de ejecución nativa capturado:', e);
+      resolve(false); // Retorna falso para que tu HomeScreen no colapse
+    }
   });
 };
 
