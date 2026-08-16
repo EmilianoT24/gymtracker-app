@@ -9,8 +9,7 @@ on:
 jobs:
   build:
     name: Compilar iOS
-    # CAMBIO 1: Fijamos macos-14 para usar una versión estable de Xcode que no rompa Expo
-    runs-on: macos-14 
+    runs-on: macos-latest
 
     steps:
       - name: Descargar el código fuente
@@ -19,8 +18,7 @@ jobs:
       - name: Configurar Node.js
         uses: actions/setup-node@v4
         with:
-          # CAMBIO 2: Actualizamos a Node 24 para cumplir con las nuevas reglas de GitHub
-          node-version: 24 
+          node-version: 20.x
 
       - name: Instalar dependencias del proyecto
         run: npm install
@@ -32,13 +30,16 @@ jobs:
         run: |
           cd ios
           
+          # 1. Enlazamos Node.js para que Xcode pueda encontrarlo al empaquetar React Native
           export NODE_BINARY=$(which node)
           sudo ln -sf $(which node) /usr/local/bin/node
           
+          # 2. Buscamos dinámicamente tu Workspace y Scheme
           WORKSPACE=$(ls -d *.xcworkspace | head -n 1)
           SCHEME=$(basename "$WORKSPACE" .xcworkspace)
           echo "Construyendo Workspace: $WORKSPACE con Scheme: $SCHEME"
           
+          # 3. Compilamos ignorando advertencias estrictas
           xcodebuild build \
             -workspace "$WORKSPACE" \
             -scheme "$SCHEME" \
@@ -54,6 +55,7 @@ jobs:
         run: |
           cd ios
           mkdir -p Payload
+          # Movemos la app desde la carpeta derivedData a Payload
           mv derivedData/Build/Products/Release-iphoneos/*.app Payload/
           zip -r GymTracker.ipa Payload
 
