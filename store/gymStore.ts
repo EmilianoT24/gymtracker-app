@@ -55,10 +55,12 @@ export interface GymStore {
   injectMockData: () => void;
   clearHistory: () => void;
 
-  // --- ACCIONES DE NUTRICIÓN ---
+  // --- ACCIONES DE NUTRICIÓN ---  
   updateNutritionTargets: (newTargets: Macros) => void;
   addDailyNutrition: (date: string, macrosToAdd: Macros) => void;
   addFrequentMeal: (meal: FrequentMeal) => void;
+  deleteFrequentMeal: (mealId: string) => void;
+  importData: (data: Partial<GymStore>) => void;
 }
 
 // --- LA CONSTRUCCIÓN (El Almacén de Zustand) ---
@@ -206,6 +208,20 @@ export const useGymStore = create<GymStore>()(
         }));
       },
 
+      deleteFrequentMeal: (mealId) => {
+        set((state) => ({
+          // filter crea una nueva lista excluyendo la tarjeta que tenga el ID coincidente
+          frequentMeals: state.frequentMeals.filter((meal) => meal.id !== mealId) 
+        }));
+      },
+
+      importData: (data) => {
+        set((state) => ({
+          ...state,
+          ...data, // Esto sobreescribirá el estado actual con los datos del respaldo
+        }));
+      },
+
       addDailyNutrition: (date, macrosToAdd) => {
         set((state) => {
           // Buscamos si ya existe un registro para la fecha de hoy
@@ -341,7 +357,13 @@ export const useGymStore = create<GymStore>()(
         if (!currentWorkout) return;
 
         const newHistoryRecords: HistoryRecord[] = [];
-        const todayDate = new Date().toISOString().split('T')[0];
+        
+        // CORRECCIÓN: Usamos tiempo local seguro en lugar de toISOString()
+        const d = new Date();
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const todayDate = `${year}-${month}-${day}`;
 
         currentWorkout.exercises.forEach((exercise) => {
           const completedSets = exercise.sets.filter((set) => set.isCompleted);

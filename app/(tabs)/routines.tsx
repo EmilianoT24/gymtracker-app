@@ -61,7 +61,10 @@ const handleCreateNewRoutine = () => {
           {/* CORRECCIÓN: Agregamos ": any" para decirle a TypeScript que ignore el error de tipado aquí */}
           {routines.map((routine: any) => {
             const isActive = routine.isActive;
-            const totalExercises = Object.values(routine.days).reduce((acc: any, dayArray: any) => acc + dayArray.length, 0);
+            const totalExercises = Number(Object.values(routine.days).reduce((acc: any, dayArray: any) => acc + dayArray.length, 0));
+            
+            // SOLUCIÓN: Calculamos los días activos dinámicamente filtrando los días que tienen al menos 1 ejercicio
+            const activeDaysCount = Object.values(routine.days).filter((dayArray: any) => dayArray.length > 0).length;
 
             return (
               <TouchableOpacity 
@@ -80,8 +83,9 @@ const handleCreateNewRoutine = () => {
                 <View style={styles.routineInfoRow}>
                   <View style={styles.routineInfo}>
                     <Text style={styles.routineName}>{routine.name}</Text>
+                    {/* SOLUCIÓN: Usamos la nueva variable y una condición para mostrar "día" o "días" correctamente */}
                     <Text style={styles.routineDetails}>
-                      {routine.frequency} • {totalExercises} ejercicios
+                      {activeDaysCount} {activeDaysCount === 1 ? 'día' : 'días'} por semana • {totalExercises} ejercicios
                     </Text>
                   </View>
                   <View style={styles.chevronContainer}>

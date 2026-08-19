@@ -1,7 +1,7 @@
 import { FontAwesome5 } from '@expo/vector-icons';
 import { Stack } from 'expo-router';
 import React, { useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import { Alert, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import { useGymStore } from '../../store/gymStore';
 
 // --- SUB-COMPONENTE: Barra de Progreso Individual ---
@@ -47,7 +47,11 @@ const NutritionCalendar = () => {
   const weekDays = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
 
   const getDayStatus = (dayNumber: number) => {
-    const dateString = new Date(currentYear, currentMonth, dayNumber).toISOString().split('T')[0];
+    const d = new Date(currentYear, currentMonth, dayNumber);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const dayStr = String(d.getDate()).padStart(2, '0');
+    const dateString = `${year}-${month}-${dayStr}`;
     const record = dailyNutritionHistory.find((d: any) => d.date === dateString);
     
     if (!record) return 'none';
@@ -114,8 +118,24 @@ export default function NutritionScreen() {
   
   const addDailyNutrition = useGymStore((state: any) => state.addDailyNutrition);
   const addFrequentMeal = useGymStore((state: any) => state.addFrequentMeal);
+  const deleteFrequentMeal = useGymStore((state: any) => state.deleteFrequentMeal);
 
-  const todayString = new Date().toISOString().split('T')[0];
+  const handleLongPressMeal = (mealId: string, mealName: string) => {
+    Alert.alert(
+      'Eliminar Comida',
+      `¿Estás seguro de que deseas eliminar "${mealName}" de tus favoritos?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Sí, eliminar', style: 'destructive', onPress: () => deleteFrequentMeal(mealId) }
+      ]
+    );
+  };
+
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const todayString = `${year}-${month}-${day}`;
   const todayRecord = dailyNutritionHistory.find((day: any) => day.date === todayString);
   const consumedToday = todayRecord ? todayRecord.consumed : { calories: 0, protein: 0, carbs: 0, fats: 0 };
 
@@ -234,7 +254,14 @@ export default function NutritionScreen() {
                       <Text style={styles.frequentTitle}>Comidas Frecuentes</Text>
                       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                         {frequentMeals.map((fm: any) => (
-                          <TouchableOpacity key={fm.id} style={styles.frequentChip} onPress={() => handleLoadFrequentMeal(fm)}>
+                          <TouchableOpacity 
+                            key={fm.id} 
+                            style={styles.frequentChip} 
+                            onPress={() => handleLoadFrequentMeal(fm)}
+                            // 3. Agregamos el evento de presión prolongada
+                            onLongPress={() => handleLongPressMeal(fm.id, fm.name)}
+                            delayLongPress={500} // Medio segundo de presión
+                          >
                             <Text style={styles.frequentChipText}>{fm.name}</Text>
                           </TouchableOpacity>
                         ))}

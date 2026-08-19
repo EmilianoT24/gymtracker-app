@@ -16,9 +16,18 @@ const mapFocusToMuscles = (focus: string): Muscle[] => {
   
   if (f.includes('pecho')) keys.push('pecho');
   if (f.includes('espalda')) keys.push('espalda');
-  if (f.includes('brazo') || f.includes('trícep') || f.includes('bícep') || f.includes('antebrazo')) keys.push('brazos');
-  if (f.includes('pierna') || f.includes('glúteo') || f.includes('pantorrilla')) keys.push('piernas');
   if (f.includes('hombro')) keys.push('hombros');
+  if (f.includes('bícep') || f.includes('bicep')) keys.push('biceps');
+  if (f.includes('trícep') || f.includes('tricep')) keys.push('triceps');
+  if (f.includes('brazo')) keys.push('biceps', 'triceps', 'antebrazos');
+  if (f.includes('antebrazo')) keys.push('antebrazos');
+  if (f.includes('pierna')) keys.push('piernas');
+  if (f.includes('glúteo') || f.includes('gluteo')) keys.push('gluteos');
+  if (f.includes('pantorrilla')) keys.push('pantorrillas');
+  if (f.includes('core') || f.includes('abdom')) keys.push('core');
+  if (f.includes('cuerpo completo') || f.includes('full')) {
+    keys.push('pecho', 'espalda', 'hombros', 'biceps', 'triceps', 'piernas', 'gluteos', 'core');
+  }
   
   return keys;
 };
@@ -62,7 +71,6 @@ const WorkoutCard = ({ activeDayData, exerciseCount, isToday, hasCompletedToday 
   const router = useRouter();
   const startWorkout = useGymStore((state) => state.startWorkout);
   
-  // SOLUCIÓN 3: Ya no ocultamos el botón si hay 0 ejercicios. Solo si es Descanso.
   const isRestDay = activeDayData.target === 'Rest' || activeDayData.target === 'Descanso';
 
   const handlePlayPress = () => {
@@ -84,16 +92,22 @@ const WorkoutCard = ({ activeDayData, exerciseCount, isToday, hasCompletedToday 
       </View>
       
       {!isRestDay && (
-        <View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           {!isToday ? (
             <View style={styles.lockedContainer}>
               <FontAwesome5 name="lock" size={20} color="#333333" />
             </View>
           ) : hasCompletedToday ? (
-            <View style={styles.completedBadge}>
-              <FontAwesome5 name="check" size={20} color="#000000" />
-              <Text style={styles.completedBadgeText}>¡Listo!</Text>
-            </View>
+            <>
+              <View style={styles.completedBadge}>
+                <FontAwesome5 name="check" size={20} color="#000000" />
+                <Text style={styles.completedBadgeText}>¡Listo!</Text>
+              </View>
+              {/* NUEVO: Botón de Replay / Forzar Inicio */}
+              <TouchableOpacity style={styles.replayButton} onPress={handlePlayPress}>
+                <FontAwesome5 name="redo" size={14} color="#B3B3B3" />
+              </TouchableOpacity>
+            </>
           ) : (
             <TouchableOpacity style={styles.playButton} onPress={handlePlayPress}>
               <FontAwesome5 name="play" size={28} color="#000000" style={styles.playIcon} />
@@ -280,8 +294,11 @@ export default function HomeScreen() {
   const [activeDayIndex, setActiveDayIndex] = useState(currentDayIndex); 
 
   const [spontaneousOverride, setSpontaneousOverride] = useState<{ target: string, rawExercises: any[] } | null>(null);
-
-  const todayString = todayDate.toISOString().split('T')[0];
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const todayString = `${year}-${month}-${day}`;
   const hasCompletedToday = exerciseHistory.some((record: any) => record.date === todayString);
 
   const dynamicWeekData = FULL_DAYS.map((fullDay, index) => {
@@ -312,8 +329,14 @@ export default function HomeScreen() {
   const exerciseCount = activeRoutine?.days[currentDayData.fullDayName]?.length || 0;
 
   const calculateFatigue = (currentIndex: number): Record<Muscle, FatigueLevel> => {
-    const muscles: Muscle[] = ['pecho', 'espalda', 'brazos', 'piernas', 'hombros'];
-    const fatigue: Record<Muscle, FatigueLevel> = { pecho: 'none', espalda: 'none', brazos: 'none', piernas: 'none', hombros: 'none' };
+    const muscles: Muscle[] = ['pecho', 'espalda', 'hombros', 'biceps', 'triceps', 'piernas', 'gluteos', 'pantorrillas', 'core', 'antebrazos'];
+    
+    // Inicializamos todos en nivel 'none' (Recuperados)
+    const fatigue: Record<Muscle, FatigueLevel> = { 
+      pecho: 'none', espalda: 'none', hombros: 'none', biceps: 'none', 
+      triceps: 'none', piernas: 'none', gluteos: 'none', pantorrillas: 'none', 
+      core: 'none', antebrazos: 'none' 
+    };
 
     muscles.forEach(muscle => {
       for (let i = 0; i < 3; i++) {
@@ -434,4 +457,5 @@ const styles = StyleSheet.create({
   quickBubbleTextActive: { color: '#000000', fontWeight: 'bold' },
   saveButton: { backgroundColor: '#1DB954', paddingVertical: 12, paddingHorizontal: 30, borderRadius: 20, marginTop: 15, width: '100%', alignItems: 'center' },
   saveButtonText: { color: '#000000', fontSize: 16, fontWeight: 'bold' },
+  replayButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#282828', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#333333' },
 });

@@ -100,6 +100,22 @@ export default function RoutineDetailScreen() {
     updateRoutine({ ...currentRoutine, days: { ...currentRoutine.days, [selectedDay]: updatedExercises } });
   };
 
+  const moveExercise = (index: number, direction: 'up' | 'down') => {
+    if (direction === 'up' && index === 0) return; // Ya está hasta arriba
+    if (direction === 'down' && index === currentDayExercises.length - 1) return; // Ya está hasta abajo
+
+    const newExercises = [...currentDayExercises];
+    const swapIndex = direction === 'up' ? index - 1 : index + 1;
+
+    // Intercambiamos los elementos
+    const temp = newExercises[index];
+    newExercises[index] = newExercises[swapIndex];
+    newExercises[swapIndex] = temp;
+
+    // Actualizamos el almacén global
+    updateRoutine({ ...currentRoutine, days: { ...currentRoutine.days, [selectedDay]: newExercises } });
+  };
+
   const handleDeleteRoutine = () => {
     Alert.alert('Eliminar Programa', `¿Estás seguro de que deseas eliminar permanentemente "${currentRoutine.name}"?`, [
       { text: 'Cancelar', style: 'cancel' },
@@ -158,7 +174,25 @@ export default function RoutineDetailScreen() {
                 <View style={styles.savedExerciseHeader}>
                   <Text style={styles.savedExerciseNumber}>{index + 1}</Text>
                   <Text style={styles.savedExerciseName}>{exercise.name}</Text>
-                  <TouchableOpacity onPress={() => removeExercise(exercise.uniqueId)}><FontAwesome5 name="times" size={16} color="#333333" /></TouchableOpacity>
+                  
+                  {/* NUEVO: Contenedor con flechas de ordenamiento y botón de borrar */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}>
+                    {index > 0 && (
+                      <TouchableOpacity onPress={() => moveExercise(index, 'up')} style={{ padding: 4 }}>
+                        <FontAwesome5 name="arrow-up" size={14} color="#B3B3B3" />
+                      </TouchableOpacity>
+                    )}
+                    
+                    {index < currentDayExercises.length - 1 && (
+                      <TouchableOpacity onPress={() => moveExercise(index, 'down')} style={{ padding: 4 }}>
+                        <FontAwesome5 name="arrow-down" size={14} color="#B3B3B3" />
+                      </TouchableOpacity>
+                    )}
+
+                    <TouchableOpacity onPress={() => removeExercise(exercise.uniqueId)} style={{ padding: 4, marginLeft: 5 }}>
+                      <FontAwesome5 name="times" size={16} color="#FF453A" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
                 <View style={styles.configRow}>
                   <View style={styles.configControl}>

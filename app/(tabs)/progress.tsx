@@ -1,7 +1,10 @@
 import { FontAwesome5 } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Stack } from 'expo-router';
+import * as Sharing from 'expo-sharing';
 import React, { useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import { Alert, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
 import { useGymStore } from '../../store/gymStore';
 
@@ -13,7 +16,8 @@ export default function ProgressScreen() {
 
   const nutritionTargets = useGymStore((state: any) => state.nutritionTargets) || { calories: 2000, protein: 150, carbs: 200, fats: 60 };
   const updateNutritionTargets = useGymStore((state: any) => state.updateNutritionTargets);
-
+  const importData = useGymStore((state: any) => state.importData);
+  
   const [selectedExerciseId, setSelectedExerciseId] = useState<string | null>(null);
   
   // Estados Modal Biometría
@@ -92,6 +96,88 @@ export default function ProgressScreen() {
         dataPointText: `${record.maxWeight}`,
       };
     });
+
+  const handleExportData = async () => {
+    try {
+      // Extraemos TODO el estado actual usando getState()
+      const state = useGymStore.getState();
+      
+      // Filtramos solo los datos puros (excluyendo las funciones/acciones)
+      const dataToExport = {
+        routines: state.routines,
+        exerciseHistory: state.exerciseHistory,
+        lastCompletedRoutineId: state.lastCompletedRoutineId,
+        unitSystem: state.unitSystem,
+        biometrics: state.biometrics,
+        nutritionTargets: state.nutritionTargets,
+        frequentMeals: state.frequentMeals,
+        dailyNutritionHistory: state.dailyNutritionHistory,
+      };
+
+      // Convertimos a texto JSON
+      const jsonString = JSON.stringify(dataToExport, null, 2);
+      // Creamos la ruta del archivo temporal
+      const fileUri = FileSystem.cacheDirectory + 'GymTracker_Backup.json';
+
+      // Guardamos y compartimos
+      await FileSystem.writeAsStringAsync(fileUri, jsonString, { encoding: FileSystem.EncodingType.UTF8 });
+      const canShare = await Sharing.isAvailableAsync();
+      
+      if (canShare) {
+        await Sharing.shareAsync(fileUri, { mimeType: 'application/json', dialogTitle: 'Guardar respaldo de GymTracker' });
+      } else {
+        Alert.alert('Error', 'Tu dispositivo no permite compartir archivos.');
+      }
+    } catch (error) {
+      console.log('Error exportando:', error);
+      Alert.alert('Error', 'Hubo un problema al crear el archivo de respaldo.');
+    }
+  };
+
+  // --- NUEVA LÓGICA: IMPORTAR ---
+  const handleImportData = async () => {
+    try {
+      // Abrimos el selector de archivos del teléfono
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/json', 'text/plain', '*/*'], // Permitimos JSON
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const fileUri = result.assets[0].uri;
+        
+        // Leemos el texto del archivo
+        const fileContent = await FileSystem.readAsStringAsync(fileUri, { encoding: FileSystem.EncodingType.UTF8 });
+        
+        // Convertimos el texto de regreso a un objeto JavaScript
+        const parsedData = JSON.parse(fileContent);
+
+        // Verificamos de forma muy básica que sí sea un archivo de nuestra app
+        if (parsedData.routines && parsedData.exerciseHistory) {
+          Alert.alert(
+            'Importar Datos',
+            'Esto sobreescribirá tus datos actuales. ¿Estás seguro?',
+            [
+              { text: 'Cancelar', style: 'cancel' },
+              { 
+                text: 'Sí, importar', 
+                style: 'destructive',
+                onPress: () => {
+                  importData(parsedData);
+                  Alert.alert('¡Éxito!', 'Tus datos han sido restaurados correctamente.');
+                }
+              }
+            ]
+          );
+        } else {
+          Alert.alert('Archivo Inválido', 'El archivo seleccionado no contiene datos válidos de GymTracker.');
+        }
+      }
+    } catch (error) {
+      console.log('Error importando:', error);
+      Alert.alert('Error', 'Hubo un problema al leer el archivo de respaldo.');
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -207,6 +293,24 @@ export default function ProgressScreen() {
             </View>
           </View>
         )}
+            <Text style={[styles.chartSectionTitle, { marginTop: 20 }]}>Gestión de Datos</Text>
+        <View style={styles.dataManagementCard}>
+          <Text style={styles.dataDescription}>
+            Crea una copia de seguridad de todas tus rutinas, historial, métricas de cuerpo y nutrición para no perder tu progreso.
+          </Text>
+          
+          <View style={styles.dataButtonsRow}>
+            <TouchableOpacity style={styles.exportButton} onPress={handleExportData}>
+              <FontAwesome5 name="file-export" size={16} color="#000000" />
+              <Text style={styles.exportButtonText}>Exportar (Backup)</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.importButton} onPress={handleImportData}>
+              <FontAwesome5 name="file-import" size={16} color="#B3B3B3" />
+              <Text style={styles.importButtonText}>Importar Datos</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </ScrollView>
 
       {/* --- MODAL PARA ACTUALIZAR BIOMETRÍA --- */}
@@ -337,5 +441,12 @@ const styles = StyleSheet.create({
   cancelButton: { flex: 1, padding: 15, alignItems: 'center', marginRight: 10, borderRadius: 12, backgroundColor: '#282828' },
   cancelButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
   saveButton: { flex: 1, padding: 15, alignItems: 'center', marginLeft: 10, borderRadius: 12, backgroundColor: '#1DB954' },
-  saveButtonText: { color: '#000000', fontSize: 16, fontWeight: 'bold' }
+  saveButtonText: { color: '#000000', fontSize: 16, fontWeight: 'bold' },
+  dataManagementCard: { backgroundColor: '#181818', borderRadius: 20, padding: 20, marginBottom: 40, borderWidth: 1, borderColor: '#282828' },
+  dataDescription: { color: '#B3B3B3', fontSize: 14, lineHeight: 20, marginBottom: 20, textAlign: 'center' },
+  dataButtonsRow: { flexDirection: 'column', gap: 12 },
+  exportButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1DB954', paddingVertical: 16, borderRadius: 16, gap: 10 },
+  exportButtonText: { color: '#000000', fontSize: 16, fontWeight: 'bold' },
+  importButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', paddingVertical: 16, borderRadius: 16, gap: 10, borderWidth: 1, borderColor: '#333333' },
+  importButtonText: { color: '#B3B3B3', fontSize: 16, fontWeight: 'bold' },
 });
