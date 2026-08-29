@@ -16,6 +16,8 @@ export default function ProgressScreen() {
 
   const nutritionTargets = useGymStore((state: any) => state.nutritionTargets) || { calories: 2000, protein: 150, carbs: 200, fats: 60 };
   const updateNutritionTargets = useGymStore((state: any) => state.updateNutritionTargets);
+  const nutritionPhase = useGymStore((state: any) => state.nutritionPhase) || 'mantenimiento';
+  const setNutritionPhase = useGymStore((state: any) => state.setNutritionPhase);
   const importData = useGymStore((state: any) => state.importData);
   
   const [selectedExerciseId, setSelectedExerciseId] = useState<string | null>(null);
@@ -250,6 +252,21 @@ export default function ProgressScreen() {
           </View>
         </View>
 
+        <Text style={styles.chartSectionTitle}>Fase Nutricional</Text>
+        <View style={styles.phaseContainer}>
+          {['deficit', 'mantenimiento', 'superavit'].map((phase) => (
+            <TouchableOpacity 
+              key={phase} 
+              style={[styles.phaseButton, nutritionPhase === phase && styles.phaseButtonActive]}
+              onPress={() => setNutritionPhase(phase as any)}
+            >
+              <Text style={[styles.phaseText, nutritionPhase === phase && styles.phaseTextActive]}>
+                {phase.charAt(0).toUpperCase() + phase.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         <Text style={styles.chartSectionTitle}>Historial de Fuerza</Text>
 
         {uniqueExerciseIds.length === 0 ? (
@@ -449,4 +466,9 @@ const styles = StyleSheet.create({
   exportButtonText: { color: '#000000', fontSize: 16, fontWeight: 'bold' },
   importButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', paddingVertical: 16, borderRadius: 16, gap: 10, borderWidth: 1, borderColor: '#333333' },
   importButtonText: { color: '#B3B3B3', fontSize: 16, fontWeight: 'bold' },
+  phaseContainer: { flexDirection: 'row', gap: 10, marginBottom: 35 },
+  phaseButton: { flex: 1, backgroundColor: '#181818', paddingVertical: 12, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: '#282828' },
+  phaseButtonActive: { backgroundColor: '#1DB954', borderColor: '#1DB954' },
+  phaseText: { color: '#B3B3B3', fontSize: 12, fontWeight: 'bold' },
+  phaseTextActive: { color: '#000000' },
 });

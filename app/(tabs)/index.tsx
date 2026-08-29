@@ -1,9 +1,11 @@
 import { FontAwesome5 } from '@expo/vector-icons';
+import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MuscleMap, { FatigueLevel, Muscle } from '../../components/musclemap';
 import { useGymStore } from '../../store/gymStore';
+import { checkMissedDaysAndSuggest } from '../../utils/coachEngine';
 import { getLatestBodyFat, getLatestWeight, getTodaySteps, initializeHealthKit } from '../../utils/healthKit';
 
 const FULL_DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
@@ -119,7 +121,110 @@ const WorkoutCard = ({ activeDayData, exerciseCount, isToday, hasCompletedToday 
   );
 };
 
-const QuickActions = ({ activeRoutine, todayName, isPastDay, setSpontaneousOverride }: any) => {
+const DailyHabitsTracker = () => {
+  const dailyHabits = useGymStore((state: any) => state.dailyHabits);
+  const toggleCreatine = useGymStore((state: any) => state.toggleCreatine);
+  const incrementWater = useGymStore((state: any) => state.incrementWater);
+
+  // Estado temporal para el botón de Refresh (puedes moverlo a gymStore luego si necesitas persistencia)
+  const [isRefreshDone, setIsRefreshDone] = useState(false);
+
+  const todayDate = new Date();
+  const dayOfWeek = todayDate.getDay(); // 0 = Domingo, 1 = Lunes, 4 = Jueves
+  const isRefreshDay = dayOfWeek === 1 || dayOfWeek === 4;
+
+  const today = todayDate.toISOString().split('T')[0];
+  const isTodayData = dailyHabits?.date === today;
+  const isCreatineTaken = isTodayData ? dailyHabits.creatine : false;
+  const waterLiters = isTodayData ? dailyHabits.water : 0;
+
+  useEffect(() => {
+    // Función para programar los recordatorios del Refresh
+    const setupRefreshNotifications = async () => {
+      // Opcional: Cancelar las anteriores para evitar duplicados si cambias los horarios
+      await Notifications.cancelAllScheduledNotificationsAsync();
+
+      const triggerDays = [2, 5]; // 2 = Lunes, 5 = Jueves en formato de notificaciones (1 es Domingo)
+      const triggerHours = [8, 17, 21]; // 8 AM, 5 PM (17), 9 PM (21)
+
+      for (const day of triggerDays) {
+        for (const hour of triggerHours) {
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: '¡Actualización Pendiente! 🔄',
+              body: 'Es hora de hacer el Refresh de tu licencia en la aplicación.',
+              sound: true,
+            },
+            trigger: { 
+              type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
+              weekday: day, 
+              hour: hour, 
+              minute: 0, 
+              repeats: true // Se repetirá todas las semanas
+            },
+          });
+        }
+      }
+    };
+
+    setupRefreshNotifications();
+  }, []);
+
+  const handleRefreshPress = () => {
+    setIsRefreshDone(true);
+    // Aquí puedes agregar la lógica que actualice tu base de datos o licencia
+    Alert.alert('Refresh Completado', 'Tu licencia se ha actualizado correctamente.');
+  };
+
+  return (
+    <View style={styles.habitsWrapper}>
+      
+      {/* Círculo de Creatina */}
+      <View style={styles.habitItem}>
+        <TouchableOpacity 
+          style={[styles.habitCircle, isCreatineTaken && styles.habitCircleActive]} 
+          onPress={toggleCreatine}
+          activeOpacity={0.8}
+        >
+          <FontAwesome5 name="bolt" size={24} color={isCreatineTaken ? '#000000' : '#1DB954'} />
+        </TouchableOpacity>
+        <Text style={styles.habitLabel}>Creatina</Text>
+        <Text style={styles.habitStatus}>{isCreatineTaken ? 'Tomada' : 'No tomada'}</Text>
+      </View>
+
+      {/* Círculo de Agua */}
+      <View style={styles.habitItem}>
+        <TouchableOpacity 
+          style={[styles.habitCircle, waterLiters > 0 && styles.habitCircleActive]} 
+          onPress={incrementWater}
+          activeOpacity={0.8}
+        >
+          <FontAwesome5 name="tint" size={24} color={waterLiters > 0 ? '#000000' : '#1DB954'} />
+        </TouchableOpacity>
+        <Text style={styles.habitLabel}>Agua</Text>
+        <Text style={styles.habitStatus}>{waterLiters > 0 ? `${waterLiters} Litros` : '0 Litros'}</Text>
+      </View>
+
+      {/* Círculo de Refresh (Condicional Lunes y Jueves) */}
+      {isRefreshDay && (
+        <View style={styles.habitItem}>
+          <TouchableOpacity 
+            style={[styles.habitCircle, isRefreshDone && styles.habitCircleActive]} 
+            onPress={handleRefreshPress}
+            activeOpacity={0.8}
+          >
+            <FontAwesome5 name="sync-alt" size={20} color={isRefreshDone ? '#000000' : '#1DB954'} />
+          </TouchableOpacity>
+          <Text style={styles.habitLabel}>Refresh</Text>
+          <Text style={styles.habitStatus}>{isRefreshDone ? 'Listo' : 'Pendiente'}</Text>
+        </View>
+      )}
+
+    </View>
+  );
+};
+
+const QuickActions = ({ activeRoutine, todayName, isPastDay, setWeeklyOverrides }: any) => {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [selectedMuscles, setSelectedMuscles] = useState<string[]>([]);
 
@@ -128,8 +233,8 @@ const QuickActions = ({ activeRoutine, todayName, isPastDay, setSpontaneousOverr
   if (isPastDay) return null;
 
   const handleSetRestDay = () => {
-    // En lugar de guardar en la base de datos, guardamos en la memoria temporal de la pantalla
-    setSpontaneousOverride({ target: 'Descanso', rawExercises: [] });
+    // Guardamos el override para este día específico
+    setWeeklyOverrides((prev: any) => ({ ...prev, [todayName]: { target: 'Descanso', rawExercises: [] } }));
   };
 
   const toggleMuscle = (muscle: string) => {
@@ -160,8 +265,8 @@ const QuickActions = ({ activeRoutine, todayName, isPastDay, setSpontaneousOverr
        }
     }
     
-    // Aplicamos el cambio espontáneo
-    setSpontaneousOverride({ target: newFocus, rawExercises: newExercises });
+    // Aplicamos el cambio espontáneo solo a este día
+    setWeeklyOverrides((prev: any) => ({ ...prev, [todayName]: { target: newFocus, rawExercises: newExercises } }));
     setIsModalVisible(false);
     setSelectedMuscles([]); 
   };
@@ -293,7 +398,7 @@ export default function HomeScreen() {
 
   const [activeDayIndex, setActiveDayIndex] = useState(currentDayIndex); 
 
-  const [spontaneousOverride, setSpontaneousOverride] = useState<{ target: string, rawExercises: any[] } | null>(null);
+  const [weeklyOverrides, setWeeklyOverrides] = useState<Record<string, { target: string, rawExercises: any[] }>>({});
   const d = new Date();
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -305,15 +410,36 @@ export default function HomeScreen() {
     let focus = activeRoutine?.dayFocus[fullDay] || '';
     let exercises = activeRoutine?.days[fullDay] || [];
     
-    // LÓGICA CLAVE: Si es hoy y el usuario hizo un cambio espontáneo, mostramos ese cambio
-    if (index === currentDayIndex && spontaneousOverride) {
-      focus = spontaneousOverride.target;
-      exercises = spontaneousOverride.rawExercises;
+    // 1. Revisamos si hay una sobreescritura temporal (por el Coach de Calendario o manual)
+    const override = weeklyOverrides[fullDay];
+    if (override) {
+      focus = override.target;
+      exercises = override.rawExercises;
+    }
+
+    // 2. Calculamos la fecha exacta del día que estamos iterando (para poder buscar en el historial)
+    const iterDate = new Date(todayDate);
+    iterDate.setDate(todayDate.getDate() - currentDayIndex + index);
+    
+    // Formateamos la fecha a YYYY-MM-DD
+    const iYear = iterDate.getFullYear();
+    const iMonth = String(iterDate.getMonth() + 1).padStart(2, '0');
+    const iDay = String(iterDate.getDate()).padStart(2, '0');
+    const iterDateString = `${iYear}-${iMonth}-${iDay}`;
+
+    // 3. NUEVO: Verificación automática de días pasados perdidos
+    if (index < currentDayIndex) {
+      // ¿Entrenamos este día exacto?
+      const trainedThatDay = exerciseHistory.some((record: any) => record.date === iterDateString);
+      
+      // Si el día ya pasó y no entrenamos, lo convertimos visualmente en Rest Day
+      if (!trainedThatDay) {
+        focus = 'Descanso';
+        exercises = [];
+      }
     }
 
     const target = focus || 'Rest';
-    const iterDate = new Date(todayDate);
-    iterDate.setDate(todayDate.getDate() - currentDayIndex + index);
 
     return {
       day: SHORT_DAYS[index],
@@ -353,6 +479,37 @@ export default function HomeScreen() {
 
   const currentFatigue = calculateFatigue(activeDayIndex);
 
+  const [calendarSuggestion, setCalendarSuggestion] = useState<any>(null);
+  const [isCoachCollapsed, setIsCoachCollapsed] = useState(false);
+
+  useEffect(() => {
+    if (activeRoutine && exerciseHistory) {
+      const suggestion = checkMissedDaysAndSuggest(activeRoutine, exerciseHistory, dayOfWeek);
+      setCalendarSuggestion(suggestion);
+    }
+  }, [activeRoutine, exerciseHistory, dayOfWeek]);
+
+  const handleAcceptCalendarCoach = () => {
+    if (!activeRoutine) return;
+
+    // Clonamos las sobreescrituras actuales
+    const newOverrides: Record<string, { target: string, rawExercises: any[] }> = { ...weeklyOverrides };
+    
+    // Lógica mágica: Recorremos los días desde HOY hasta el SÁBADO (índice 5)
+    for (let i = currentDayIndex; i <= 5; i++) {
+      const currentDayName = FULL_DAYS[i];
+      const previousDayName = FULL_DAYS[i - 1]; // El día que vamos a arrastrar hacia hoy
+      
+      newOverrides[currentDayName] = {
+        target: activeRoutine.dayFocus[previousDayName] || 'Descanso',
+        rawExercises: activeRoutine.days[previousDayName] || []
+      };
+    }
+
+    setWeeklyOverrides(newOverrides);
+    setCalendarSuggestion(null); // Ocultamos el mensaje del coach
+  };
+
   // NUEVO: Necesitamos el enrutador para el botón de continuar
   const router = useRouter();
 
@@ -361,6 +518,46 @@ export default function HomeScreen() {
       <WeeklyCalendar activeDayIndex={activeDayIndex} onDayPress={setActiveDayIndex} weekData={dynamicWeekData} />
       
       <View style={styles.mainContent}>
+
+        {calendarSuggestion && (
+          isCoachCollapsed ? (
+            // VISTA COLAPSADA (BURBUJA)
+            <TouchableOpacity 
+              style={styles.coachBubble} 
+              onPress={() => setIsCoachCollapsed(false)}
+            >
+              <FontAwesome5 name="robot" size={24} color="#1DB954" />
+            </TouchableOpacity>
+          ) : (
+            // VISTA EXPANDIDA (TARJETA)
+            <View style={{ backgroundColor: '#1DB95415', borderWidth: 1, borderColor: '#1DB954', borderRadius: 16, padding: 20, marginBottom: 20 }}>
+              
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <FontAwesome5 name="robot" size={18} color="#1DB954" />
+                  <Text style={{ color: '#1DB954', fontWeight: 'bold', fontSize: 16 }}>Smart Coach</Text>
+                </View>
+                {/* BOTÓN PARA COLAPSAR */}
+                <TouchableOpacity onPress={() => setIsCoachCollapsed(true)} style={{ padding: 5 }}>
+                  <FontAwesome5 name="chevron-up" size={16} color="#1DB954" />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={{ color: '#FFFFFF', fontSize: 14, marginBottom: 15, lineHeight: 20 }}>
+                {calendarSuggestion.message}
+              </Text>
+              
+              <TouchableOpacity 
+                style={{ backgroundColor: '#1DB954', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}
+                onPress={handleAcceptCalendarCoach}
+              >
+                <Text style={{ color: '#000000', fontWeight: 'bold', fontSize: 14 }}>
+                  {calendarSuggestion.actionLabel}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )
+        )}
         
         {/* NUEVO: TARJETA CONDICIONAL DE AUTOGUARDADO */}
         {activeWorkout && (
@@ -391,8 +588,9 @@ export default function HomeScreen() {
           activeRoutine={activeRoutine} 
           todayName={FULL_DAYS[currentDayIndex]} 
           isPastDay={activeDayIndex < currentDayIndex} 
-          setSpontaneousOverride={setSpontaneousOverride} // <-- NUEVO
+          setSpontaneousOverride={setWeeklyOverrides} 
         />
+        <DailyHabitsTracker />
         <ProgressSection fatigueData={currentFatigue} />
       </View>
     </ScrollView>
@@ -401,7 +599,7 @@ export default function HomeScreen() {
 // --- ESTILOS ---
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000000', paddingTop: 80 },
-  calendarContainer: { marginBottom: 50 },
+  calendarContainer: { marginBottom: 10 },
   scrollContent: { paddingHorizontal: 15, gap: 10 },
   dayCard: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#282828', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12 },
   activeDayCard: { backgroundColor: '#1DB954' },
@@ -458,4 +656,62 @@ const styles = StyleSheet.create({
   saveButton: { backgroundColor: '#1DB954', paddingVertical: 12, paddingHorizontal: 30, borderRadius: 20, marginTop: 15, width: '100%', alignItems: 'center' },
   saveButtonText: { color: '#000000', fontSize: 16, fontWeight: 'bold' },
   replayButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#282828', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#333333' },
+  coachBubble: {
+    backgroundColor: '#1DB95415',
+    borderWidth: 1,
+    borderColor: '#1DB954',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+    alignSelf: 'flex-start', // La alinea a la derecha para que no estorbe
+    elevation: 5,
+    shadowColor: '#1DB954',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+  },
+  habitsWrapper: { 
+    backgroundColor: '#181818', 
+    borderRadius: 20, 
+    paddingVertical: 25, 
+    paddingHorizontal: 15, 
+    flexDirection: 'row', 
+    justifyContent: 'space-around', 
+    marginTop: 20,
+    borderWidth: 1, 
+    borderColor: '#282828'
+  },
+  habitItem: { 
+    alignItems: 'center',
+    width: 80
+  },
+  habitCircle: { 
+    width: 64, 
+    height: 64, 
+    borderRadius: 32, 
+    backgroundColor: '#282828', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    marginBottom: 10, 
+    borderWidth: 1, 
+    borderColor: '#333333' 
+  },
+  habitCircleActive: { 
+    backgroundColor: '#1DB954', 
+    borderColor: '#1DB954' 
+  },
+  habitLabel: { 
+    color: '#FFFFFF', 
+    fontSize: 14, 
+    fontWeight: 'bold' 
+  },
+  habitStatus: { 
+    color: '#B3B3B3', 
+    fontSize: 12, 
+    marginTop: 4,
+    textAlign: 'center' 
+  },
 });

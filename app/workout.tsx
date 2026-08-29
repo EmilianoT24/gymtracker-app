@@ -1,4 +1,5 @@
 import { FontAwesome5 } from '@expo/vector-icons';
+import * as Notifications from 'expo-notifications';
 import { Stack, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Animated, Modal, PanResponder, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
@@ -6,9 +7,21 @@ import { ScrollView } from 'react-native-gesture-handler';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { LineChart } from 'react-native-gifted-charts';
 import { useGymStore } from '../store/gymStore';
+import { WorkoutCoachSuggestion } from '../types/workout.types';
+import { analyzeMuscleBalance, analyzeSessionVolume, analyzeWeeklyVolume, calculateProgressiveOverload, suggestExerciseAlternatives } from '../utils/coachEngine';
 
 const allCategories = ['Pecho', 'Espalda', 'Hombros', 'Bíceps', 'Tríceps', 'Piernas', 'Glúteos', 'Pantorrillas', 'Core', 'Antebrazos'];
 const DAYS_OF_WEEK = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: false, 
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+    shouldShowBanner: false,
+    shouldShowList: false,
+  }),
+});
 
 export default function WorkoutScreen() {
   const router = useRouter();
@@ -21,6 +34,7 @@ export default function WorkoutScreen() {
   const cancelWorkout = useGymStore((state) => state.cancelWorkout);
   const exerciseDB = useGymStore((state) => state.exerciseDB);
   const exerciseHistory = useGymStore((state) => state.exerciseHistory);
+  const nutritionPhase = useGymStore((state: any) => state.nutritionPhase) || 'mantenimiento';
   
   // NUEVO: Traemos funciones para actualizar la rutina base si hay cambios
   const routines = useGymStore((state) => state.routines);
@@ -29,7 +43,6 @@ export default function WorkoutScreen() {
   const [isChartModalVisible, setIsChartModalVisible] = useState(false);
   const [selectedChartExerciseId, setSelectedChartExerciseId] = useState<string | null>(null);
   const [selectedChartExerciseName, setSelectedChartExerciseName] = useState<string | null>(null);
-  const [completedSets, setCompletedSets] = useState<string[]>([]);
   const [expandedExercises, setExpandedExercises] = useState<string[]>([]);
   const [showCompleted, setShowCompleted] = useState(false);
 
@@ -41,6 +54,8 @@ export default function WorkoutScreen() {
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
   const [modalAction, setModalAction] = useState<'add' | 'swap'>('add');
   const [targetExerciseId, setTargetExerciseId] = useState<string | null>(null);
+
+  const [coachSuggestions, setCoachSuggestions] = useState<WorkoutCoachSuggestion[]>([]);
 
   const panY = useRef(new Animated.Value(0)).current;
   const closeModal = () => {
@@ -66,12 +81,46 @@ export default function WorkoutScreen() {
     setActiveFilters(prev => prev.includes(category) ? prev.filter(c => c !== category) : [...prev, category]);
   };
 
-  const filteredExercises = exerciseDB?.filter(exercise => {
+  let filteredExercises = exerciseDB?.filter(exercise => {
     if (activeFilters.length === 0) return true;
     const musclesWorked = [exercise.primary, ...(exercise.secondary || [])];
     return activeFilters.every(filter => musclesWorked.includes(filter));
   }) || [];
 
+  // NUEVA LÓGICA: Ordenamiento Inteligente
+  if (activeFilters.length === 1) {
+    const filtroActivo = activeFilters[0];
+    
+    filteredExercises.sort((a, b) => {
+      const aEsPrincipal = a.primary === filtroActivo;
+      const bEsPrincipal = b.primary === filtroActivo;
+
+      // Si 'a' es principal y 'b' no, movemos 'a' arriba
+      if (aEsPrincipal && !bEsPrincipal) return -1;
+      // Si 'b' es principal y 'a' no, movemos 'b' arriba
+      if (!aEsPrincipal && bEsPrincipal) return 1;
+      // Si ambos son iguales, se quedan donde estaban
+      return 0; 
+    });
+  }
+
+  let recommendedExerciseIds: string[] = [];
+  
+  if (modalAction === 'swap' && targetExerciseId && activeWorkout) {
+    // 1. Encontramos el ejercicio dentro de tu rutina activa actual (usando el ID temporal)
+    const activeEx = activeWorkout.exercises.find(ex => ex.exerciseId === targetExerciseId);
+    
+    if (activeEx && exerciseDB) {
+      // 2. Buscamos el ejercicio original en la base de datos usando su NOMBRE
+      const targetExercise = exerciseDB.find(ex => ex.name === activeEx.name);
+      
+      if (targetExercise) {
+        // 3. ¡Ahora sí le pedimos al coach las alternativas!
+        const alternatives = suggestExerciseAlternatives(targetExercise, exerciseDB);
+        recommendedExerciseIds = alternatives.map(ex => ex.id);
+      }
+    }
+  }
   const openAddModal = () => {
     setModalAction('add');
     setIsModalVisible(true);
@@ -86,18 +135,30 @@ export default function WorkoutScreen() {
   const handleSelectExercise = (exercise: any) => {
     if (!activeWorkout) return;
 
+    // 1. Le pedimos al Smart Coach el cálculo matemático completo
+    const suggestion = calculateProgressiveOverload(exercise, exerciseHistory);
+
     if (modalAction === 'add') {
+      // 2. Generamos las series inyectando los pesos y reps recomendados
+      const generatedSets = Array.from({ length: suggestion.sets }).map((_, index) => ({
+        id: Math.random().toString(),
+        setNumber: index + 1,
+        weight: '',
+        reps: '',
+        placeholderWeight: suggestion.weight, // Peso calculado por el coach
+        placeholderReps: suggestion.reps,     // Repeticiones calculadas por el coach
+        isCompleted: false
+      }));
+
       const newEx = {
         exerciseId: Math.random().toString(),
         name: exercise.name,
-        sets: [
-          { id: Math.random().toString(), setNumber: 1, weight: '', reps: '', placeholderWeight: '0', placeholderReps: '10', isCompleted: false },
-          { id: Math.random().toString(), setNumber: 2, weight: '', reps: '', placeholderWeight: '0', placeholderReps: '10', isCompleted: false },
-          { id: Math.random().toString(), setNumber: 3, weight: '', reps: '', placeholderWeight: '0', placeholderReps: '10', isCompleted: false }
-        ]
+        sets: generatedSets
       };
+      
       updateActiveWorkoutExercises([...activeWorkout.exercises, newEx] as any[]);
       setExpandedExercises(prev => [...prev, newEx.exerciseId]); 
+
     } else if (modalAction === 'swap' && targetExerciseId) {
       const updatedExercises = activeWorkout.exercises.map(ex => {
         if (ex.exerciseId === targetExerciseId) {
@@ -105,19 +166,28 @@ export default function WorkoutScreen() {
           if (expandedExercises.includes(targetExerciseId)) {
             setExpandedExercises(prev => [...prev.filter(id => id !== targetExerciseId), newExerciseId]);
           }
+          
+          // Generamos series inyectando los pesos y reps para los reemplazos
+          const generatedSets = Array.from({ length: suggestion.sets }).map((_, index) => ({
+            id: Math.random().toString(),
+            setNumber: index + 1,
+            weight: '',
+            reps: '',
+            placeholderWeight: suggestion.weight, // Peso calculado
+            placeholderReps: suggestion.reps,     // Repeticiones calculadas
+            isCompleted: false
+          }));
+
           return {
             ...ex,
             exerciseId: newExerciseId,
             name: exercise.name,
-            sets: ex.sets.map(s => ({ ...s, weight: '', reps: '', isCompleted: false }))
+            sets: generatedSets
           };
         }
         return ex;
       });
       updateActiveWorkoutExercises(updatedExercises as any[]);
-      
-      const oldSets = activeWorkout.exercises.find(e => e.exerciseId === targetExerciseId)?.sets.map(s => s.id) || [];
-      setCompletedSets(prev => prev.filter(id => !oldSets.includes(id)));
     }
     closeModal();
   };
@@ -157,15 +227,123 @@ export default function WorkoutScreen() {
   }, [activeWorkout]);
 
   useEffect(() => {
+    const requestPermissions = async () => {
+      const { status } = await Notifications.requestPermissionsAsync();
+      if (status !== 'granted') {
+        console.log('Permisos de notificación no otorgados');
+      }
+    };
+    requestPermissions();
+  }, []);
+
+  const targetTimeRef = useRef<number | null>(null);
+  const notificationIdRef = useRef<string | null>(null);
+
+  // 4. El motor del reloj actualizado
+  useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
-    if (isRunning && timeInSeconds > 0) {
-      interval = setInterval(() => setTimeInSeconds(prev => prev - 1), 1000);
-    } else if (timeInSeconds === 0) {
-      setIsTimerVisible(false);
-      setIsRunning(false);
+
+    const manageTimer = async () => {
+      if (isRunning) {
+        // Fijamos la hora de término
+        targetTimeRef.current = Date.now() + timeInSeconds * 1000;
+
+        // Programamos la notificación en el sistema del celular
+        const id = await Notifications.scheduleNotificationAsync({
+          content: {
+            title: '¡Descanso terminado!',
+            body: 'Es hora de volver a tu siguiente serie. ¡Con todo!',
+            sound: true,
+          },
+          trigger: { 
+            type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+            seconds: timeInSeconds 
+          },
+        });
+        notificationIdRef.current = id;
+
+        interval = setInterval(() => {
+          if (targetTimeRef.current) {
+            const remaining = Math.round((targetTimeRef.current - Date.now()) / 1000);
+
+            if (remaining <= 0) {
+              setTimeInSeconds(0);
+              setIsRunning(false);
+              setIsTimerVisible(false);
+              targetTimeRef.current = null;
+              notificationIdRef.current = null;
+            } else {
+              setTimeInSeconds(remaining);
+            }
+          }
+        }, 1000);
+        
+      } else {
+        // Si el usuario pone pausa, cancelamos la alerta que estaba pendiente
+        if (notificationIdRef.current) {
+          await Notifications.cancelScheduledNotificationAsync(notificationIdRef.current);
+          notificationIdRef.current = null;
+        }
+      }
+    };
+
+    manageTimer();
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isRunning]);
+
+  useEffect(() => {
+    if (activeWorkout && exerciseDB) {
+      // 1. Análisis de Sesión (Micro-ciclo)
+      const sessionWarnings = analyzeSessionVolume(activeWorkout.exercises, exerciseDB);
+      
+      // 2. Análisis Semanal (Macro-ciclo + Nutrición)
+      const weeklyWarnings = analyzeWeeklyVolume(activeWorkout.exercises, exerciseHistory, exerciseDB, nutritionPhase);
+      
+      // 3. NUEVO: Análisis de Equilibrio Muscular (Push vs Pull)
+      const balanceWarnings = analyzeMuscleBalance(activeWorkout.exercises, exerciseHistory, exerciseDB);
+      
+      // Juntamos todas las advertencias en la pantalla
+      setCoachSuggestions([...sessionWarnings, ...weeklyWarnings, ...balanceWarnings]);
     }
-    return () => clearInterval(interval);
-  }, [isRunning, timeInSeconds]);
+  }, [activeWorkout?.exercises, nutritionPhase]);
+
+  // 2. La función que ejecuta el coach al darle "Aceptar"
+  const handleAcceptVolumeWarning = (targetMuscle: string, suggestionId: string) => {
+    if (!activeWorkout) return;
+
+    // Buscamos de atrás hacia adelante el último ejercicio que trabaje ese músculo
+    let exerciseIndexToTrim = -1;
+    for (let i = activeWorkout.exercises.length - 1; i >= 0; i--) {
+      const exDb = exerciseDB.find((dbEx: any) => dbEx.id === activeWorkout.exercises[i].exerciseId);
+      if (exDb && exDb.primary === targetMuscle) {
+        exerciseIndexToTrim = i;
+        break;
+      }
+    }
+
+    if (exerciseIndexToTrim !== -1) {
+      // Le quitamos el último set a ese ejercicio
+      const updatedExercises = [...activeWorkout.exercises];
+      const targetExercise = updatedExercises[exerciseIndexToTrim];
+      
+      if (targetExercise.sets.length > 1) {
+        // Quitamos el último elemento del arreglo de sets
+        targetExercise.sets = targetExercise.sets.slice(0, -1);
+        updateActiveWorkoutExercises(updatedExercises as any[]);
+      } else {
+        // Si solo tenía 1 set, mejor borramos el ejercicio completo
+        const filteredExercises = updatedExercises.filter((_, index) => index !== exerciseIndexToTrim);
+        updateActiveWorkoutExercises(filteredExercises as any[]);
+      }
+    }
+    
+    // Ocultamos la sugerencia de la pantalla
+    setCoachSuggestions(prev => prev.filter(sug => sug.id !== suggestionId));
+  };
+
 
   if (!activeWorkout) {
     return (
@@ -189,16 +367,33 @@ export default function WorkoutScreen() {
     if (!isRunning) setTimeInSeconds(prev => (prev === 60 ? 180 : 60));
   };
 
-  const toggleSet = (setId: string) => {
-    setCompletedSets(prev => {
-      if (!prev.includes(setId)) {
-        setIsTimerVisible(true);
-        setTimeInSeconds(60); 
-        setIsRunning(false);  
-        return [...prev, setId];
+  const toggleSet = (exerciseId: string, setId: string) => {
+    if (!activeWorkout) return;
+    
+    // Actualizamos el estado global directamente
+    const updatedExercises = activeWorkout.exercises.map(exercise => {
+      if (exercise.exerciseId === exerciseId) {
+        const updatedSets = exercise.sets.map(set => {
+          if (set.id === setId) {
+            const newlyCompleted = !set.isCompleted;
+            
+            // Si el usuario acaba de marcar el set como completado, iniciamos el timer
+            if (newlyCompleted) {
+              setIsTimerVisible(true);
+              setTimeInSeconds(60); 
+              setIsRunning(false);  
+            }
+            
+            return { ...set, isCompleted: newlyCompleted };
+          }
+          return set;
+        });
+        return { ...exercise, sets: updatedSets };
       }
-      return prev.filter(id => id !== setId);
+      return exercise;
     });
+    
+    updateActiveWorkoutExercises(updatedExercises as any[]);
   };
 
   const toggleExerciseAccordion = (exerciseId: string) => {
@@ -219,12 +414,47 @@ export default function WorkoutScreen() {
   };
 
   const isExerciseCompleted = (exercise: any) => {
-    return exercise.sets.length > 0 && exercise.sets.every((set: any) => completedSets.includes(set.id));
+    return exercise.sets.length > 0 && exercise.sets.every((set: any) => set.isCompleted);
   };
 
   const deleteExercise = (exerciseId: string) => {
     const updatedExercises = activeWorkout.exercises.filter(ex => ex.exerciseId !== exerciseId);
     updateActiveWorkoutExercises(updatedExercises as any[]);
+  };
+
+  const removeSet = (exerciseId: string, setId: string) => {
+    Alert.alert(
+      'Eliminar Serie',
+      '¿Estás seguro de que deseas eliminar este set de tu entrenamiento?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { 
+          text: 'Sí, eliminar', 
+          style: 'destructive',
+          onPress: () => {
+            if (!activeWorkout) return;
+            
+            const updatedExercises = activeWorkout.exercises.map((ex: any) => {
+              if (ex.exerciseId === exerciseId) {
+                // 1. Filtramos y eliminamos el set seleccionado
+                const filteredSets = ex.sets.filter((s: any) => s.id !== setId);
+                
+                // 2. Re-enumeramos los sets restantes (1, 2, 3...)
+                const renumberedSets = filteredSets.map((s: any, index: number) => ({
+                  ...s,
+                  setNumber: index + 1
+                }));
+                
+                return { ...ex, sets: renumberedSets };
+              }
+              return ex;
+            });
+            
+            updateActiveWorkoutExercises(updatedExercises as any[]);
+          }
+        }
+      ]
+    );
   };
 
   const renderLeftActions = (exerciseId: string) => {
@@ -237,13 +467,8 @@ export default function WorkoutScreen() {
 
   // NUEVO: Finalizar entrenamiento verificando cambios
   const handleFinishWorkout = () => {
-    const finalExercises = activeWorkout.exercises.map(exercise => ({
-      ...exercise,
-      sets: exercise.sets.map(set => ({ ...set, isCompleted: completedSets.includes(set.id) }))
-    }));
-    updateActiveWorkoutExercises(finalExercises as any[]);
+    const finalExercises = activeWorkout.exercises;
 
-    // SOLUCIÓN: Agregamos ": any" a activeRoutine y "(r: any)" al buscar
     const activeRoutine: any = routines.find((r: any) => r.isActive);
     const todayName = DAYS_OF_WEEK[new Date().getDay()];
 
@@ -293,8 +518,32 @@ export default function WorkoutScreen() {
   };
 
   const handleCancelWorkout = () => {
-    cancelWorkout();
-    router.back();
+    Alert.alert(
+      '¿Pausar o Cancelar?',
+      '¿Deseas pausar tu entrenamiento para continuarlo después, o cancelarlo y borrar el progreso?',
+      [
+        { 
+          text: 'Pausar (Guardar progreso)', 
+          style: 'default', 
+          // Si elige pausar, solo lo regresamos a la pantalla anterior sin borrar datos
+          onPress: () => router.back() 
+        },
+        { 
+          text: 'Cancelar rutina', 
+          style: 'destructive', 
+          // Si elige cancelar, destruimos el estado global y luego lo regresamos
+          onPress: () => {
+            cancelWorkout();
+            router.back();
+          } 
+        },
+        { 
+          text: 'Seguir entrenando', 
+          style: 'cancel' 
+          // No hace nada, solo cierra el menú
+        }
+      ]
+    );
   };
 
   const openChartModal = (exerciseId: string, exerciseName: string) => {
@@ -334,6 +583,26 @@ export default function WorkoutScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {coachSuggestions.length > 0 && (
+          <View style={{ backgroundColor: '#1DB95415', borderWidth: 1, borderColor: '#1DB954', borderRadius: 12, padding: 15, marginBottom: 20 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 }}>
+              <FontAwesome5 name="robot" size={16} color="#1DB954" />
+              <Text style={{ color: '#1DB954', fontWeight: 'bold', fontSize: 16 }}>Smart Coach</Text>
+            </View>
+            
+            {coachSuggestions.map(suggestion => (
+              <View key={suggestion.id} style={{ marginBottom: 10 }}>
+                <Text style={{ color: '#FFFFFF', fontSize: 14, marginBottom: 8 }}>{suggestion.message}</Text>
+                <TouchableOpacity 
+                  style={{ backgroundColor: '#1DB954', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, alignSelf: 'flex-start' }}
+                  onPress={() => handleAcceptVolumeWarning(suggestion.targetMuscle!, suggestion.id)}
+                >
+                  <Text style={{ color: '#000000', fontWeight: 'bold' }}>{suggestion.actionLabel}</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
         {activeWorkout.exercises.map((exercise) => {
           const isCompleted = isExerciseCompleted(exercise);
           const isExpanded = expandedExercises.includes(exercise.exerciseId);
@@ -386,10 +655,16 @@ export default function WorkoutScreen() {
                       </View>
 
                       {exercise.sets.map((set: any) => {
-                        const isSetCompleted = completedSets.includes(set.id);
+                        const isSetCompleted = set.isCompleted;
                         
                         return (
-                          <View key={set.id} style={[styles.setRow, isSetCompleted && styles.setRowCompleted]}>
+                          <TouchableOpacity 
+                            key={set.id} 
+                            style={[styles.setRow, isSetCompleted && styles.setRowCompleted]}
+                            activeOpacity={0.9} // Mantiene la fila casi sólida al tocarla
+                            onLongPress={() => removeSet(exercise.exerciseId, set.id)}
+                            delayLongPress={500} // Medio segundo de presión
+                          >
                             <Text style={styles.setText}>{set.setNumber}</Text>
                             
                             <TextInput
@@ -418,11 +693,11 @@ export default function WorkoutScreen() {
                             
                             <TouchableOpacity 
                               style={[styles.checkButton, isSetCompleted && styles.checkButtonActive]}
-                              onPress={() => toggleSet(set.id)}
+                              onPress={() => toggleSet(exercise.exerciseId, set.id)}
                             >
                               {isSetCompleted && <FontAwesome5 name="check" size={12} color="#000000" />}
                             </TouchableOpacity>
-                          </View>
+                          </TouchableOpacity>
                         );
                       })}
 
@@ -496,7 +771,17 @@ export default function WorkoutScreen() {
                 {filteredExercises.map((exercise: any) => (
                   <TouchableOpacity key={exercise.id} style={styles.exerciseResultCard} onPress={() => handleSelectExercise(exercise)}>
                     <View style={styles.cardTextContent}>
-                      <Text style={styles.resultName}>{exercise.name}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 }}>
+                        <Text style={styles.resultName}>{exercise.name}</Text>
+                        
+                        {/* NUEVO: Badge del Smart Coach */}
+                        {recommendedExerciseIds.includes(exercise.id) && (
+                          <View style={{ backgroundColor: '#1DB954', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                            <Text style={{ color: '#000000', fontSize: 10, fontWeight: 'bold' }}>Sugerido</Text>
+                          </View>
+                        )}
+                      </View>
+
                       <View style={styles.tagsContainer}>
                         <View style={styles.primaryTag}><Text style={styles.primaryTagText}>{exercise.primary}</Text></View>
                         {exercise.secondary?.map((sec: string, idx: number) => (

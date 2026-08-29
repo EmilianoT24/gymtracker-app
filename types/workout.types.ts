@@ -1,3 +1,24 @@
+// --- METADATOS DEL SMART COACH ---
+
+// Nivel de fatiga del sistema nervioso y muscular
+export type FatigueTier = 'alta' | 'media' | 'baja';
+
+// Clasificación del ejercicio
+export type ExerciseType = 'compuesto' | 'aislamiento';
+
+// Patrones de movimiento biomecánicos
+export type MovementPattern = 
+  | 'push_horizontal' 
+  | 'push_vertical'   
+  | 'pull_horizontal' 
+  | 'pull_vertical'   
+  | 'squat'           
+  | 'hinge'           
+  | 'lunge'           
+  | 'isolation';      
+
+// --- INTERFACES BASE ---
+
 export interface Routine {
   id: string;
   name: string;
@@ -7,8 +28,14 @@ export interface Routine {
 export interface Exercise {
   id: string;
   name: string;
-  mainMuscle: string[]; // Ej. ['Chest']
-  subMuscle: string[];  // Ej. ['Triceps', 'Front Delt']
+  primary: string;       // Cambiado de mainMuscle para coincidir con gymStore
+  secondary: string[];   // Cambiado de subMuscle para coincidir con gymStore
+  
+  // Nuevos metadatos obligatorios para el Coach Engine
+  fatigue_tier: FatigueTier;
+  exercise_type: ExerciseType;
+  movement_pattern: MovementPattern;
+  
   sets: Set[];
 }
 
@@ -19,30 +46,44 @@ export interface Set {
   restTime: number; // En segundos
 }
 
+// --- INTERFACES DE ENTRENAMIENTO EN VIVO ---
+
 export interface ActiveWorkout {
   id: string;
-  name: string; // El nombre de la rutina (ej. "Día de Pecho")
-  startTime: Date; // ¡Aquí está la solución a tu error principal!
+  name: string; 
+  startTime: Date; 
   exercises: ActiveExercise[];
-}
-
-export interface activeSet {
-  id: string; // Mismo ID del molde
-  reps: number; // Lo que realmente hizo
-  weight: number; // Lo que realmente levantó
-  isCompleted: boolean; // Para pintar de verde y disparar el timer
 }
 
 export interface ActiveExercise {
   exerciseId: string;
   name: string;
-  sets: activeSet[]; // ¡Aquí le decimos a TypeScript que use activeSet!
+  sets: activeSet[]; 
 }
 
+export interface activeSet {
+  id: string; 
+  reps: number; 
+  weight: number; 
+  isCompleted: boolean; 
+}
+
+// --- INTERFACES DE HISTORIAL ---
+
 export interface HistoryRecord {
-  id: string;          // ID único de este registro histórico
-  exerciseId: string;  // El eslabón que lo conecta con el "Press de Banca"
-  date: string;        // Tu eje X en la gráfica (ej. "2026-07-07")
-  maxWeight: number;   // Tu eje Y en la gráfica
+  id: string;          
+  exerciseId: string;  
+  date: string;        
+  maxWeight: number;   
   maxReps: number;
+  totalSets: number;
+}
+
+export interface WorkoutCoachSuggestion {
+  id: string;
+  type: 'volume_warning' | 'exercise_alternative' | 'muscle_balance';
+  message: string; 
+  actionLabel: string; 
+  targetMuscle?: string; // <-- NUEVO: Le decimos a TypeScript que esta propiedad existe
+  onAcceptAction?: () => void; 
 }

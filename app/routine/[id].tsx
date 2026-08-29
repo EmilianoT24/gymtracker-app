@@ -53,12 +53,28 @@ export default function RoutineDetailScreen() {
     );
   };
 
-  const filteredExercises = exerciseDB.filter(exercise => {
+  let filteredExercises = exerciseDB.filter(exercise => {
     if (activeFilters.length === 0) return true;
-    const musclesWorked = [exercise.primary, ...exercise.secondary];
+    const musclesWorked = [exercise.primary, ...(exercise.secondary || [])];
     return activeFilters.every(filter => musclesWorked.includes(filter));
   });
 
+  // NUEVA LÓGICA: Ordenamiento Inteligente
+  if (activeFilters.length === 1) {
+    const filtroActivo = activeFilters[0];
+    
+    filteredExercises.sort((a, b) => {
+      const aEsPrincipal = a.primary === filtroActivo;
+      const bEsPrincipal = b.primary === filtroActivo;
+
+      // Si 'a' es principal y 'b' no, movemos 'a' arriba
+      if (aEsPrincipal && !bEsPrincipal) return -1;
+      // Si 'b' es principal y 'a' no, movemos 'b' arriba
+      if (!aEsPrincipal && bEsPrincipal) return 1;
+      // Si ambos son iguales, se quedan donde estaban
+      return 0; 
+    });
+  }
   // A partir de aquí ya es seguro hacer el "return" anticipado
   if (!currentRoutine) {
     return (
