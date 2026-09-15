@@ -1,7 +1,7 @@
 import { FontAwesome5 } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import { Stack, useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Animated, Modal, PanResponder, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
@@ -145,13 +145,13 @@ export default function WorkoutScreen() {
         setNumber: index + 1,
         weight: '',
         reps: '',
-        placeholderWeight: suggestion.weight, // Peso calculado por el coach
-        placeholderReps: suggestion.reps,     // Repeticiones calculadas por el coach
+        placeholderWeight: suggestion.weight,
+        placeholderReps: suggestion.reps,    
         isCompleted: false
       }));
 
       const newEx = {
-        exerciseId: Math.random().toString(),
+        exerciseId: exercise.id, // CORRECCIÓN 1: Usamos el ID real de la BD
         name: exercise.name,
         sets: generatedSets
       };
@@ -162,19 +162,19 @@ export default function WorkoutScreen() {
     } else if (modalAction === 'swap' && targetExerciseId) {
       const updatedExercises = activeWorkout.exercises.map(ex => {
         if (ex.exerciseId === targetExerciseId) {
-          const newExerciseId = Math.random().toString();
+          const newExerciseId = exercise.id; // CORRECCIÓN 2: Usamos el ID real de la BD
+          
           if (expandedExercises.includes(targetExerciseId)) {
             setExpandedExercises(prev => [...prev.filter(id => id !== targetExerciseId), newExerciseId]);
           }
           
-          // Generamos series inyectando los pesos y reps para los reemplazos
           const generatedSets = Array.from({ length: suggestion.sets }).map((_, index) => ({
             id: Math.random().toString(),
             setNumber: index + 1,
             weight: '',
             reps: '',
-            placeholderWeight: suggestion.weight, // Peso calculado
-            placeholderReps: suggestion.reps,     // Repeticiones calculadas
+            placeholderWeight: suggestion.weight,
+            placeholderReps: suggestion.reps,   
             isCompleted: false
           }));
 

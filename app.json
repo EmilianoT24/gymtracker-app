@@ -46,7 +46,12 @@
           "HEALTH_SHARE_USAGE": "Leemos tus datos de pasos, peso y grasa corporal para llevar un registro automático de tu progreso en el gimnasio.",
           "HEALTH_UPDATE_USAGE": "Guardamos tus entrenamientos en el ecosistema de salud para mantener tus métricas actualizadas."
         }
-      ]
+      ],
+      "expo-font",
+      "expo-image",
+      "expo-sharing",
+      "expo-status-bar",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

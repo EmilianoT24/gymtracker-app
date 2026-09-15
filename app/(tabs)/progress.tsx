@@ -3,7 +3,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Stack } from 'expo-router';
 import * as Sharing from 'expo-sharing';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Alert, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
 import { useGymStore } from '../../store/gymStore';
@@ -11,6 +11,7 @@ import { useGymStore } from '../../store/gymStore';
 export default function ProgressScreen() {
   const exerciseHistory = useGymStore((state: any) => state.exerciseHistory);
   const routines = useGymStore((state: any) => state.routines);
+  const exerciseDB = useGymStore((state: any) => state.exerciseDB);
   const biometrics = useGymStore((state: any) => state.biometrics);
   const updateBiometrics = useGymStore((state: any) => state.updateBiometrics);
 
@@ -72,18 +73,19 @@ export default function ProgressScreen() {
   const uniqueExerciseIds = Array.from(new Set(exerciseHistory.map((record: any) => record.exerciseId)));
 
   const getExerciseName = (exerciseId: string) => {
+    // 1. Buscamos primero en la base de datos oficial (Soluciona los agregados extra)
+    const dbExercise = exerciseDB.find((ex: any) => ex.id === exerciseId);
+    if (dbExercise) return dbExercise.name;
+
+    // 2. Fallback: buscar en las rutinas (Por si es un registro viejo)
     for (const routine of routines as any[]) {
       for (const day in routine.days) {
         const found = routine.days[day].find((ex: any) => ex.exerciseId === exerciseId || ex.id === exerciseId || ex.uniqueId === exerciseId);
         if (found) return found.name;
       }
     }
-    return 'Ejercicio Desconocido';
+    return 'Ejercicio no registrado';
   };
-
-  if (!selectedExerciseId && uniqueExerciseIds.length > 0) {
-    setSelectedExerciseId(uniqueExerciseIds[0] as string);
-  }
 
   const chartData = exerciseHistory
     .filter((record: any) => record.exerciseId === selectedExerciseId)

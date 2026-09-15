@@ -1,7 +1,7 @@
 import { FontAwesome5 } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MuscleMap, { FatigueLevel, Muscle } from '../../components/musclemap';
 import { useGymStore } from '../../store/gymStore';
@@ -242,19 +242,26 @@ const QuickActions = ({ activeRoutine, todayName, isPastDay, setWeeklyOverrides 
   };
 
   const handleSaveMuscles = () => {
+    // 1. Verificamos que la rutina base exista
     if (!activeRoutine) return;
     
     const newFocus = selectedMuscles.length > 0 ? selectedMuscles.join(', ') : 'Descanso';
-    let newExercises = activeRoutine.days[todayName] || []; 
+    
+    // 2. SALVAVIDAS: Nos aseguramos de que el objeto days exista antes de leer todayName
+    let newExercises = (activeRoutine.days && activeRoutine.days[todayName]) ? activeRoutine.days[todayName] : []; 
 
     if (newFocus === 'Descanso') {
        newExercises = [];
     } else {
-       const matchingDayName = Object.keys(activeRoutine.dayFocus).find(
-          day => activeRoutine.dayFocus[day] === newFocus && day !== todayName
+       // 3. SALVAVIDAS: Evitamos el crash asegurando que dayFocus no sea undefined
+       const safeDayFocus = activeRoutine.dayFocus || {};
+       
+       const matchingDayName = Object.keys(safeDayFocus).find(
+          day => safeDayFocus[day] === newFocus && day !== todayName
        );
 
-       if (matchingDayName) {
+       // 4. SALVAVIDAS: Solo hacemos el .map() si estamos 100% seguros de que es una lista válida
+       if (matchingDayName && activeRoutine.days && Array.isArray(activeRoutine.days[matchingDayName])) {
           newExercises = activeRoutine.days[matchingDayName].map((ex: any) => ({
              ...ex,
              uniqueId: Math.random().toString(),
@@ -265,8 +272,12 @@ const QuickActions = ({ activeRoutine, todayName, isPastDay, setWeeklyOverrides 
        }
     }
     
-    // Aplicamos el cambio espontáneo solo a este día
-    setWeeklyOverrides((prev: any) => ({ ...prev, [todayName]: { target: newFocus, rawExercises: newExercises } }));
+    // 5. Aplicamos el cambio temporal al estado que controla la semana
+    setWeeklyOverrides((prev: any) => ({ 
+      ...prev, 
+      [todayName]: { target: newFocus, rawExercises: newExercises } 
+    }));
+    
     setIsModalVisible(false);
     setSelectedMuscles([]); 
   };
@@ -588,7 +599,7 @@ export default function HomeScreen() {
           activeRoutine={activeRoutine} 
           todayName={FULL_DAYS[currentDayIndex]} 
           isPastDay={activeDayIndex < currentDayIndex} 
-          setSpontaneousOverride={setWeeklyOverrides} 
+          setWeeklyOverrides={setWeeklyOverrides} 
         />
         <DailyHabitsTracker />
         <ProgressSection fatigueData={currentFatigue} />
